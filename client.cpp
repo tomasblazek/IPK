@@ -85,9 +85,6 @@ char* makeHeader(int operation, char *remotePath) {
     unsigned int i = 0;
     char c[BUFSIZE];
     for (i = 0; i < strlen(remotePath); i++){
-//        if(remotePath[i] == '/' && i != 0) {
-//            break;
-//        }
         c[i] = remotePath[i];
     }
     c[i] = '\0';
@@ -149,11 +146,13 @@ int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *
 
     //get remote path to working directory
     shift = i;
+
     for (; i < strlen(argv2); i++){
         c[i-shift] = argv2[i];
     }
     c[i-shift] = '\0';
     strcpy(remotePath,c);
+
 
     return 0;
 }
@@ -237,12 +236,6 @@ int main (int argc, const char * argv[]) {
 		exit(EXIT_FAILURE);
     }
 
-    /* nacteni zpravy od uzivatele */
-    //char buf[BUFSIZE];
-    //bzero(buf, BUFSIZE);
-
-    //printf("Please enter msg: ");
-    //fgets(buf, BUFSIZE, stdin);
 
     char* buf = makeHeader(operation, remotePath);
     printf("%s\n",buf); //TODO smazat
@@ -266,8 +259,7 @@ int main (int argc, const char * argv[]) {
     }
     printf("Echo from server: %s\n", buf);
 
-
-    FILE *file = fopen("vystup/text.pdf","wb");
+    FILE *file = fopen(basename(remotePath),"wb");
 
     bool ok = read_file(client_socket, file, buf);
     (void)ok;
