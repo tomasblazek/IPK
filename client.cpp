@@ -48,6 +48,7 @@ char* makeHeader(int operation, char *remotePath){
     }
     else{
         fprintf(stderr,"Error: Unknown operation.");
+        free(head);
         exit(EXIT_FAILURE);
     }
 
@@ -76,8 +77,7 @@ char* makeHeader(int operation, char *remotePath){
     return head;
 }
 
-int parse_remotePath(int operation, const char *argv2, char *hostname, int *port_number, char *remotePath){
-    (void) operation;
+int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *remotePath){
     char c[BUFSIZE];
 
 
@@ -173,9 +173,9 @@ int main (int argc, const char * argv[]) {
     /* 1. test vstupnich parametru: */
     //Zpracovani argumentu
     int operation = parse_arguments(argc,argv);
-    parse_remotePath(operation, argv[2], server_hostname, &port_number, remotePath);
+    parse_remotePath(argv[2], server_hostname, &port_number, remotePath);
 
-    printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);
+    printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
 
 
     /* 2. ziskani adresy serveru pomoci DNS */
@@ -215,22 +215,29 @@ int main (int argc, const char * argv[]) {
     //fgets(buf, BUFSIZE, stdin);
 
     char* buf = makeHeader(operation, remotePath);
-    printf("%s\n",buf);
-
-
+    printf("%s\n",buf); //TODO smazat
 
     /* odeslani zpravy na server */
     bytestx = (int)send(client_socket, buf, strlen(buf), 0);
-    if (bytestx < 0) 
-      perror("Error in sendto");
+    if (bytestx < 0) {
+        free(buf);
+        perror("Error in sendto");
+        exit(EXIT_FAILURE);
+    }
+
 
     /* prijeti odpovedi a jeji vypsani */
+    bzero(buf, BUFSIZE);
     bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
-    if (bytesrx < 0) 
-      perror("Error: in recvfrom");
+    if (bytesrx < 0) {
+        free(buf);
+        perror("Error: in recvfrom");
+        exit(EXIT_FAILURE);
+    }
       
     printf("Echo from server: %s", buf);
-        
+
+    free(buf);
     close(client_socket);
     return 0;
 }

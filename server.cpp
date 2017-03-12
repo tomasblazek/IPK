@@ -9,36 +9,56 @@
 #include <unistd.h>
 #include <dirent.h>
 
+
 #define BUFSIZE 1024
 
-/*
-bool sendfile(int sock, FILE *f)
+bool senddata(int sock, void *buf, int buflen)
+{
+    unsigned char *pbuf = (unsigned char *) buf;
+
+    while (buflen > 0)
+    {
+        int bytestx = send(sock, pbuf, buflen, 0);
+        if (bytestx < 0) {
+            free(buf);
+            perror("Error in sendto");
+            return false;
+        }
+
+
+        pbuf += bytestx;
+        buflen -= bytestx;
+    }
+
+    return true;
+}
+
+bool send_file(int sock, FILE *f)
 {
     fseek(f, 0, SEEK_END);
-    long filesize = ftell(f);
+    long file_size = ftell(f);
     rewind(f);
-    if (filesize == EOF)
+    if (file_size == EOF)
         return false;
-    if (!sendlong(sock, filesize))
-        return false;
-    if (filesize > 0)
+
+    if (file_size > 0)
     {
-        char buffer[1024];
+        char buffer[BUFSIZE];
         do
         {
-            size_t num = min(filesize, sizeof(buffer));
+            size_t num = sizeof(buffer);
             num = fread(buffer, 1, num, f);
             if (num < 1)
                 return false;
-            if (!senddata(sock, buffer, num, 0))
+            if (!senddata(sock, buffer, num))
                 return false;
-            filesize -= num;
+            file_size -= num;
         }
-        while (filesize > 0);
+        while (file_size > 0);
     }
     return true;
 }
- */
+
 
 int main (int argc, const char *argv[]) {
 	int rc;
@@ -121,7 +141,14 @@ int main (int argc, const char *argv[]) {
 				printf("INFO: Client port is %d\n", ntohs(sa_client.sin6_port));
 			}
 
-			char buff[BUFSIZE];
+            //char OK[] = "HTTP/1.1 404 200 OK\n";
+            char NotFound[] = "HTTP/1.1 404 Not Found\n";
+            //char BadRequest[] = "HTTP/1.1 400 Bad Request\n";
+
+            char buff[BUFSIZE];
+            char path[BUFSIZE];
+            char c[BUFSIZE];
+            FILE *file;
 			int res = 0;
 			for (;;)		
 			{
@@ -131,25 +158,76 @@ int main (int argc, const char *argv[]) {
                     break;
                 printf("Client message: %s", buff);
 
-                
+                //GET RESTful OPERATION
+                unsigned int i = 0;
+                for (i = 0; i < strlen(buff); i++) {
+                    if(i == 3){
+                        break;
+                    }
+                    c[i] = buff[i];
+                }
+                c[i] = '\0';
+
+                int shift;
+                if(!strcmp(c,"GET")){ //get,lst
+                    //GET path
+                    i++; //jump over space
+                    i++; //jump over /
+                    shift = i;
+                    for (; i < strlen(buff); i++) {
+                        if(buff[i] == '?'){
+                            break;
+                        }
+                        path[i-shift] = buff[i];
+                    }
+                    path[i-shift] = '\0';
+
+                    //GET type file/folder
+                    shift = i;
+                    for (; i < strlen(buff); i++) {
+                        if(buff[i] == ' '){
+                            break;
+                        }
+                        c[i-shift] = buff[i];
+                    }
+                    c[i-shift] = '\0';
+                    if(!strcmp(c,"?type=file")){
+                        file = fopen(path,"rb");
+                        if(file == NULL){
+                            fprintf(stderr,"Error: Cant open file |%s| for write in operation put.", path);
+                            send(comm_socket, NotFound, strlen(NotFound), 0);
+                        }
+                        else
+                        {
+                            if(!send_file(comm_socket, file))
+                                printf("CHyba pri posilani");
+                            fclose(file);
+                        }
+                    }
+                    else if(!strcmp(c,"?type=folder")){
+
+                    }
+                    else
+                    {
+                        fprintf(stderr,"Error: Bad specification in header file/folder");
+                        exit(EXIT_FAILURE);
+                    }
+
+                }
+                else
+                {
+                    printf("Zatim nedefinovana operace!\n");
+                    send(comm_socket, buff, strlen(buff), 0);
+                }
 
 
 
-
-			    send(comm_socket, buff, strlen(buff), 0);
+                //send(comm_socket, buff, strlen(buff), 0);
 			}
-
-            /*
-            FILE *file = fopen("text.txt",rb);
-            if(file == NULL)
-                exit(EXIT_FAILURE);
-            sendfile(comm_socket,file);
-             */
-
 		}
 		else
 		{
-			printf(".");
+			fprintf(stderr,"Unknown error.");
 		}
 		printf("Connection to %s closed\n",str);
 		close(comm_socket);
