@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -9,53 +10,55 @@
 #include <unistd.h>
 #include <dirent.h>
 
+using namespace std;
 
 #define BUFSIZE 1024
 
-bool senddata(int sock, void *buf, int buflen)
-{
-    unsigned char *pbuf = (unsigned char *) buf;
 
-    while (buflen > 0)
-    {
-        int bytestx = send(sock, pbuf, buflen, 0);
-        if (bytestx < 0) {
-            free(buf);
-            perror("Error in sendto");
+bool writeDataToClient(int sckt, const void *data, int datalen)
+{
+    const char *pdata = (const char*) data;
+
+    while (datalen > 0){
+        int numSent = send(sckt, pdata, datalen, 0);
+        if (numSent <= 0){
+            if (numSent == 0){
+                fprintf(stderr,"The client was not written to: disconnected\n");
+            } else {
+                perror("The client was not written to");
+            }
             return false;
         }
-
-
-        pbuf += bytestx;
-        buflen -= bytestx;
+        pdata += numSent;
+        datalen -= numSent;
     }
 
     return true;
 }
 
-bool send_file(int sock, FILE *f)
-{
+bool send_file(int socket, FILE *f){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     rewind(f);
-    if (file_size == EOF)
-        return false;
 
-    if (file_size > 0)
-    {
-        char buffer[BUFSIZE];
-        do
-        {
-            size_t num = sizeof(buffer);
-            num = fread(buffer, 1, num, f);
-            if (num < 1)
-                return false;
-            if (!senddata(sock, buffer, num))
-                return false;
-            file_size -= num;
-        }
-        while (file_size > 0);
+    int bytesc = send(socket,to_string(file_size).c_str(),BUFSIZE, 0);
+    if(bytesc < 0){
+        fprintf(stderr,"The client was not written to: disconnected\n");
+        return false;
     }
+
+    char *file_content = (char*) malloc(file_size);
+    if(file_content == NULL){
+        fprintf(stderr,"Error: Malloc chyba filecontent.\n");
+        return false;
+    }
+    if(fread(file_content,file_size,1,f) != 1){
+        fprintf(stderr,"Error: Chyba fread.\n");
+        return false;
+    }
+
+    writeDataToClient(socket,file_content,file_size);
+
     return true;
 }
 
@@ -199,8 +202,10 @@ int main (int argc, const char *argv[]) {
                         }
                         else
                         {
+
                             if(!send_file(comm_socket, file))
-                                printf("CHyba pri posilani");
+                                printf("Chyba pri posilani");
+
                             fclose(file);
                         }
                     }

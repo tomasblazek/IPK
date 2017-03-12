@@ -31,7 +31,37 @@ enum Operations{
     oper_lst
 };
 
-char* makeHeader(int operation, char *remotePath){
+
+bool read_file(int socket, FILE *f, char* buf) {
+    long int file_size = atol(buf);
+
+    if (file_size > 0) {
+        char buffer[BUFSIZE];
+        int size = 0;
+        while (size < file_size) {
+            bzero(buffer, BUFSIZE);
+            int bytesres = (int) recv(socket, buffer, BUFSIZE, 0);
+            if (bytesres < 0) {
+                perror("Error: in recvfrom\n");
+                return false;
+            }
+            if (fwrite(buffer, bytesres, 1, f) != 1) {
+                fprintf(stderr, "Error: fwrite chyba.\n");
+                return false;
+            }
+            size += bytesres;
+        }
+
+        if (size != file_size) {
+            fprintf(stderr, "Error: size != file_size.\n");
+            return false;
+        }
+
+    }
+    return true;
+}
+
+char* makeHeader(int operation, char *remotePath) {
     char* head = (char*) malloc(BUFSIZE);
     if(head == NULL) {
         fprintf(stderr,"Error: Malloc head.");
@@ -183,28 +213,28 @@ int main (int argc, const char * argv[]) {
         fprintf(stderr,"Error: no such host as %s\n", server_hostname);
         exit(EXIT_FAILURE);
     }
-    
+
     /* 3. nalezeni IP adresy serveru a inicializace struktury server_address */
     bzero((char *) &server_address, sizeof(server_address));
     server_address.sin_family = AF_INET;
     bcopy((char *)server->h_addr, (char *)&server_address.sin_addr.s_addr, server->h_length);
     server_address.sin_port = htons(port_number);
-   
-    /* tiskne informace o vzdalenem soketu */ 
+
+    /* tiskne informace o vzdalenem soketu */
     printf("INFO: Server socket: %s : %d \n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
-    
+
     /* Vytvoreni soketu */
 	if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) <= 0)
 	{
 		perror("Error: socket");
 		exit(EXIT_FAILURE);
 	}
-	    
+
 
     if (connect(client_socket, (const struct sockaddr *) &server_address, sizeof(server_address)) != 0)
     {
 		perror("Error: connect");
-		exit(EXIT_FAILURE);        
+		exit(EXIT_FAILURE);
     }
 
     /* nacteni zpravy od uzivatele */
@@ -218,7 +248,7 @@ int main (int argc, const char * argv[]) {
     printf("%s\n",buf); //TODO smazat
 
     /* odeslani zpravy na server */
-    bytestx = (int)send(client_socket, buf, strlen(buf), 0);
+    bytestx = (int)send(client_socket, buf, BUFSIZE, 0);
     if (bytestx < 0) {
         free(buf);
         perror("Error in sendto");
@@ -234,8 +264,16 @@ int main (int argc, const char * argv[]) {
         perror("Error: in recvfrom");
         exit(EXIT_FAILURE);
     }
-      
-    printf("Echo from server: %s", buf);
+    printf("Echo from server: %s\n", buf);
+
+
+    FILE *file = fopen("vystup/text.pdf","wb");
+
+    bool ok = read_file(client_socket, file, buf);
+    (void)ok;
+    fclose(file);
+
+
 
     free(buf);
     close(client_socket);
