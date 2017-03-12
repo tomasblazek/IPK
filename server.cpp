@@ -131,6 +131,11 @@ int main (int argc, const char *argv[]) {
                     break;
                 printf("Client message: %s", buff);
 
+                
+
+
+
+
 			    send(comm_socket, buff, strlen(buff), 0);
 			}
 

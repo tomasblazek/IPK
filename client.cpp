@@ -6,7 +6,8 @@
  * Ondrej Rysavy (rysavy@fit.vutbr.cz)
  *
  */
- 
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,8 @@
 #include <arpa/inet.h>
 //#include <netinet/in.h>
 #include <unistd.h>
+
+
 
 #define BUFSIZE 1024
 
@@ -28,15 +31,54 @@ enum Operations{
     oper_lst
 };
 
-char *makeHeader(int operation, char *hostname, char *remotePath){
+char* makeHeader(int operation, char *remotePath){
+    char* head = (char*) malloc(BUFSIZE);
+    if(head == NULL) {
+        fprintf(stderr,"Error: Malloc head.");
+        exit(EXIT_FAILURE);
+    }
+    if(operation == oper_del || operation == oper_rmd){
+        strcpy(head,"DELETE ");
+    }
+    else if(operation == oper_put || operation == oper_mkd){
+        strcpy(head,"PUT ");
+    }
+    else if(operation == oper_get || operation == oper_lst){
+        strcpy(head,"GET ");
+    }
+    else{
+        fprintf(stderr,"Error: Unknown operation.");
+        exit(EXIT_FAILURE);
+    }
+
+    unsigned int i = 0;
+    char c[BUFSIZE];
+    for (i = 0; i < strlen(remotePath); i++){
+//        if(remotePath[i] == '/' && i != 0) {
+//            break;
+//        }
+        c[i] = remotePath[i];
+    }
+    c[i] = '\0';
+    strcat(head,c);
+
+    strcat(head,"?type=");
+    if(operation == oper_get ||operation == oper_put || operation == oper_del) {
+        strcat(head, "file");
+    }
+    else
+    {
+        strcat(head,"folder");
+    }
+    strcat(head," HTTP/1.1\n");
 
 
-    return(char*) "head\n";
+    return head;
 }
 
 int parse_remotePath(int operation, const char *argv2, char *hostname, int *port_number, char *remotePath){
     (void) operation;
-    char c[1024];
+    char c[BUFSIZE];
 
 
     //http prefix control
@@ -166,15 +208,16 @@ int main (int argc, const char * argv[]) {
     }
 
     /* nacteni zpravy od uzivatele */
-    char buf[BUFSIZE];
-    bzero(buf, BUFSIZE);
+    //char buf[BUFSIZE];
+    //bzero(buf, BUFSIZE);
+
     //printf("Please enter msg: ");
-
-    char* head = makeHeader(operation, server_hostname, remotePath);
-    printf("%s",head);
-    strcpy(buf,head);
-
     //fgets(buf, BUFSIZE, stdin);
+
+    char* buf = makeHeader(operation, remotePath);
+    printf("%s\n",buf);
+
+
 
     /* odeslani zpravy na server */
     bytestx = (int)send(client_socket, buf, strlen(buf), 0);
