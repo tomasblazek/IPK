@@ -104,7 +104,8 @@ char* makeHeader(int operation, char *remotePath) {
     return head;
 }
 
-int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *remotePath){
+
+void parse_remotePath(const char *argv2, char *hostname, int *port_number, char *remotePath){
     char c[BUFSIZE];
 
 
@@ -124,7 +125,7 @@ int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *
 
     //get hostname processing
     for (i = 7; i < strlen(argv2); i++){
-        if(argv2[i] == ':') {
+        if(argv2[i] == ':' || argv2[i] == '/') {
             break;
         }
         c[i-7] = argv2[i];
@@ -133,16 +134,22 @@ int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *
     strcpy(hostname,c);
 
     //get port number
-    i++;//cut colon
-    int shift = i;
-    for (; i < strlen(argv2); i++){
-        if(argv2[i] == '/') {
-            break;
+    int shift;
+    if (argv2 [i] == ':') {
+        i++;//cut colon
+        shift = i;
+        for (; i < strlen(argv2); i++) {
+            if (argv2[i] == '/') {
+                break;
+            }
+            c[i - shift] = argv2[i];
         }
-        c[i-shift] = argv2[i];
+        c[i - shift] = '\0';
+        *port_number = atoi(c);
+    } else{
+        // default port
+        *port_number = 6677;
     }
-    c[i-shift] = '\0';
-    *port_number = atoi(c);
 
     //get remote path to working directory
     shift = i;
@@ -153,8 +160,6 @@ int parse_remotePath(const char *argv2, char *hostname, int *port_number, char *
     c[i-shift] = '\0';
     strcpy(remotePath,c);
 
-
-    return 0;
 }
 
 
@@ -165,7 +170,12 @@ int parse_arguments(int argc,const char *argv[]){
             return oper_mkd;
         }
         else if(!strcmp(argv[1],"put")){
-            return oper_put;
+            if(argc == 4){
+                fprintf(stderr,"Error: Bad count of arguments.\n");
+                exit(EXIT_FAILURE);
+            }
+            else
+                return oper_put;
         }
         else if(!strcmp(argv[1],"get")){
             return oper_get;
@@ -186,7 +196,7 @@ int parse_arguments(int argc,const char *argv[]){
     }
     else{
         fprintf(stderr,"Error: Bad count of arguments.\n");
-        fprintf(stderr,"usage: %s <operation> <http://hostname:port/remotePath> <localPath>\n", argv[0]);
+        fprintf(stderr,"usage: %s <operation> <http://hostname:port/remotePath> <localPath>\n", argv[0]); //TODO delete
         exit(EXIT_FAILURE);
     }
 }
@@ -196,12 +206,23 @@ int main (int argc, const char * argv[]) {
     //socklen_t serverlen;
     char server_hostname[1024];
     char remotePath[1024];
+    char localPath[1024];
     struct hostent *server;
     struct sockaddr_in server_address;
 
     /* 1. test vstupnich parametru: */
     //Zpracovani argumentu
     int operation = parse_arguments(argc,argv);
+    if(argc == 4){
+        if(operation == oper_get || operation == oper_put) {
+            strcpy(localPath, argv[3]);
+        }
+        else {
+            fprintf(stderr, "Error: Bad count (3) of arguments for operation.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     parse_remotePath(argv[2], server_hostname, &port_number, remotePath);
 
     printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
@@ -240,7 +261,7 @@ int main (int argc, const char * argv[]) {
     char* buf = makeHeader(operation, remotePath);
     printf("%s\n",buf); //TODO smazat
 
-    /* odeslani zpravy na server */
+    /* odeslani zpravy header na server */
     bytestx = (int)send(client_socket, buf, BUFSIZE, 0);
     if (bytestx < 0) {
         free(buf);
@@ -259,11 +280,30 @@ int main (int argc, const char * argv[]) {
     }
     printf("Echo from server: %s\n", buf);
 
-    FILE *file = fopen(basename(remotePath),"wb");
 
-    bool ok = read_file(client_socket, file, buf);
-    (void)ok;
-    fclose(file);
+    if(operation == oper_get) {
+        FILE *file;
+        if(argc == 4) {
+            file = fopen(localPath,"wb");
+        }
+        else
+        {
+            file = fopen(basename(remotePath), "wb");
+        }
+
+        if(file == NULL){
+            perror("Error: Cant open file for write.");
+        }
+        else
+        {
+            bool ok = read_file(client_socket, file, buf);
+            (void) ok;
+            fclose(file);
+        }
+    }
+    else if(operation == oper_put){
+
+    }
 
 
 
