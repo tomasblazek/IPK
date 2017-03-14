@@ -5,6 +5,7 @@
 #include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -13,6 +14,44 @@
 using namespace std;
 
 #define BUFSIZE 1024
+
+#define S_FILE 100
+#define S_FOLDER 101
+
+/**
+ * Určuje zdali na zadane ceste se nachazi adresar nebo soubor. Pokud neni nalezen vraci false.
+ * @param path
+ * @param FilOrFol
+ * @return
+ */
+bool fileOrDirectory(char* path, int FilOrFol) {
+    struct stat statbuf;
+
+    FILE *f = fopen(path,"r");
+    if(f==NULL) {
+        return false;
+    }
+    stat(path, &statbuf);
+    if(S_ISDIR(statbuf.st_mode)) {
+        //printf("directory\n");
+        if (FilOrFol == S_FOLDER){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    else {
+        //printf("file\n");
+        if (FilOrFol == S_FILE) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+}
+
 
 bool read_file(int socket, FILE *f, char* buf) {
     long int file_size = atol(buf);
@@ -101,14 +140,12 @@ int main (int argc, const char *argv[]) {
     char root_folder[1024];
     bool root_folder_def = false;
 
-
     if(argc > 5 || argc == 4 || argc == 2){
         fprintf(stderr,"Error: Bad count of argument %d. (max 4)\n",argc-1);
         //fprintf(stderr,"usage: %s -r <ROOT-FOLDER> -p <port>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    //fprintf(stderr,"usage: %s -r <ROOT-FOLDER> -p <port>\n", argv[0]);
     int argument;
 	while ((argument = getopt(argc, (char* const*) argv, "p:r:")) != -1) {
 		switch (argument) {
@@ -127,7 +164,6 @@ int main (int argc, const char *argv[]) {
                 exit(EXIT_FAILURE);
 		}
 	}
-
     if(!root_folder_def) {
         if (getcwd(root_folder, sizeof(root_folder)) == NULL) {
             perror("getcwd() error\n");
@@ -143,13 +179,10 @@ int main (int argc, const char *argv[]) {
 		perror("ERROR: socket");
 		exit(EXIT_FAILURE);
 	}
-	
 	memset(&sa,0,sizeof(sa));
 	sa.sin6_family = AF_INET6;
 	sa.sin6_addr = in6addr_any;
-	sa.sin6_port = htons(port_number);	
-        
-    
+	sa.sin6_port = htons(port_number);
     
 	if ((rc = bind(welcome_socket, (struct sockaddr*)&sa, sizeof(sa))) < 0)
 	{
@@ -180,141 +213,159 @@ int main (int argc, const char *argv[]) {
         }
         if(client_processPID == 0) {
         */
-            if (inet_ntop(AF_INET6, &sa_client.sin6_addr, str, sizeof(str))) {
-                printf("INFO: New connection:\n");
-                printf("INFO: Client address is %s\n", str);
-                printf("INFO: Client port is %d\n", ntohs(sa_client.sin6_port));
-            }
+        if (inet_ntop(AF_INET6, &sa_client.sin6_addr, str, sizeof(str))) {
+            printf("INFO: New connection:\n");
+            printf("INFO: Client address is %s\n", str);
+            printf("INFO: Client port is %d\n", ntohs(sa_client.sin6_port));
+        }
 
-            //char OK[] = "HTTP/1.1 404 200 OK\n";
-            char NotFound[] = "HTTP/1.1 404 Not Found\n";
-            //char BadRequest[] = "HTTP/1.1 400 Bad Request\n";
+        //char OK[] = "HTTP/1.1 404 200 OK\n";
+        char NotFound[] = "HTTP/1.1 404 Not Found\n";
+        //char BadRequest[] = "HTTP/1.1 400 Bad Request\n";
 
-            char buff[BUFSIZE];
-            char path[BUFSIZE];
-            char workingPath[BUFSIZE];
-            strcpy(workingPath,root_folder);
-            char c[BUFSIZE];
-            FILE *file;
-            int res = 0;
+        char buff[BUFSIZE];
+        char path[BUFSIZE];
+        char workingPath[BUFSIZE];
+        char fileOrFolder_Flag[BUFSIZE];
+        strcpy(workingPath,root_folder);
+        char c[BUFSIZE];
+        FILE *file;
+        int res = 0;
 
-            bzero(buff, BUFSIZE);
-            res = recv(comm_socket, buff, sizeof(buff), 0);
-            if (res <= 0)
+        bzero(buff, BUFSIZE);
+        res = recv(comm_socket, buff, sizeof(buff), 0);
+        if (res <= 0)
+            break;
+        printf("Client message: %s", buff);
+        //////////////PARSE HEAD///////////////////////
+        //GET RESTful OPERATION
+        unsigned int i = 0;
+        for (i = 0; i < strlen(buff); i++) {
+            if (buff[i] == ' ') {
                 break;
-            printf("Client message: %s", buff);
-
-            //GET RESTful OPERATION
-            unsigned int i = 0;
-            for (i = 0; i < strlen(buff); i++) {
-                if (i == 3) {
-                    break;
-                }
-                c[i] = buff[i];
             }
-            c[i] = '\0';
+            c[i] = buff[i];
+        }
+        c[i] = '\0';
 
-            int shift;
-            if (!strcmp(c, "GET")) { //get,lst
-                //GET path
-                i++; //jump over space
-                //i++; //jump over /
-                shift = i;
-                for (; i < strlen(buff); i++) {
-                    if (buff[i] == '?') {
-                        break;
-                    }
-                    path[i - shift] = buff[i];
-                }
-                path[i - shift] = '\0';
-                strcat(workingPath,path);
+        int shift;
+        i++; //jump over space
+        //i++; //jump over /
+        shift = i;
+        for (; i < strlen(buff); i++) {
+            if (buff[i] == '?') {
+                break;
+            }
+            path[i - shift] = buff[i];
+        }
+        path[i - shift] = '\0';
+        strcat(workingPath,path);
+        printf("CESTA:%s\n",workingPath);
 
-                //GET type file/folder
-                shift = i;
-                for (; i < strlen(buff); i++) {
-                    if (buff[i] == ' ') {
-                        break;
-                    }
-                    c[i - shift] = buff[i];
-                }
-                c[i - shift] = '\0';
-                if (!strcmp(c, "?type=file")) {
-                    printf("CESTA:%s\n",workingPath);
-                    file = fopen(workingPath, "rb");
-                    if (file == NULL) {
-                        fprintf(stderr, "Error: Cant open file |%s| for write in operation read.", path);
-                        send(comm_socket, NotFound, strlen(NotFound), 0);
-                    } else {
-
-                        if (!send_file(comm_socket, file))
-                            printf("Chyba pri posilani");
-
-                        fclose(file);
-                    }
-                } else if (!strcmp(c, "?type=folder")) {
-                        //TODO lst
-
+        //GET type file/folder
+        shift = i;
+        for (; i < strlen(buff); i++) {
+            if (buff[i] == ' ') {
+                break;
+            }
+            fileOrFolder_Flag[i - shift] = buff[i];
+        }
+        fileOrFolder_Flag[i - shift] = '\0';
+        ///////////////////////////////////////////////
+        if (!strcmp(c, "GET")) { //get,lst
+            if (!strcmp(fileOrFolder_Flag, "?type=file")) {
+                file = fopen(workingPath, "rb");
+                if (file == NULL) {
+                    fprintf(stderr, "Error: Cant open file |%s| for write in operation read.", path);
+                    send(comm_socket, NotFound, strlen(NotFound), 0);
                 } else {
-                    fprintf(stderr, "Error: Bad specification in header file/folder");
-                    exit(EXIT_FAILURE);
-                }
 
+                    if (!send_file(comm_socket, file))
+                        printf("Chyba pri posilani");
+
+                    fclose(file);
+                }
+            } else if (!strcmp(c, "?type=folder")) {
+                    //TODO lst
+
+            } else {
+                fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
-            else if(!strcmp(c,"PUT")){
-                i++; //jump over space
-                i++; //jump over /
-                shift = i;
-                for (; i < strlen(buff); i++) {
-                    if (buff[i] == '?') {
+        }else if(!strcmp(c,"PUT")){
+            if (!strcmp(fileOrFolder_Flag, "?type=file")) {
+                file = fopen(workingPath, "wb");
+                if (file == NULL) {
+                    perror("Error: Cant open file for write.");
+                } else {
+                    bzero(buff, BUFSIZE);
+                    res = recv(comm_socket, buff, sizeof(buff), 0);
+                    if (res <= 0)
                         break;
-                    }
-                    path[i - shift] = buff[i];
-                }
-                path[i - shift] = '\0';
-                strcat(workingPath,path);
-                printf("%s\n",workingPath);
+                    printf("Client SIZE: %s", buff);
 
-                //GET type file/folder
-                shift = i;
-                for (; i < strlen(buff); i++) {
-                    if (buff[i] == ' ') {
-                        break;
-                    }
-                    c[i - shift] = buff[i];
+                    bool ok = read_file(comm_socket, file, buff);
+                    (void) ok;
+                    fclose(file);
                 }
-                c[i - shift] = '\0';
-                if (!strcmp(c, "?type=file")) {
 
-                    FILE *file;
-                    file = fopen(workingPath, "wb");
-                    if (file == NULL) {
-                        perror("Error: Cant open file for write.");
-                    } else {
-                        bzero(buff, BUFSIZE);
-                        res = recv(comm_socket, buff, sizeof(buff), 0);
-                        if (res <= 0)
+            } else if(!strcmp(fileOrFolder_Flag, "?type=folder"))
+            {
+                int result = mkdir(workingPath, 0777);
+                if(result == 0){
+                    // send succes
+                } else{
+                    //Already exist dir or not permision
+                    fprintf(stderr,"Already exists.");
+                }
+
+            } else {
+                fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
+            }
+
+        }else if(!strcmp(c,"DELETE")) {
+            //TODO DELETE
+            if (!strcmp(fileOrFolder_Flag, "?type=file")) {
+                //del
+                if(fileOrDirectory(workingPath,S_FILE)){
+                    printf("Deleteeee");
+                    remove(workingPath);
+                } else{
+                    printf("NEDeleteeee");
+                }
+            } else if(!strcmp(fileOrFolder_Flag, "?type=folder")) {
+                //rmd
+                if(fileOrDirectory(workingPath,S_FOLDER)) {
+                    int n = 0;
+                    struct dirent *d;
+                    DIR *dir = opendir(workingPath);
+                    while ((d = readdir(dir)) != NULL) {
+                        if (++n > 2)
                             break;
-                        printf("Client SIZE: %s", buff);
-
-                        bool ok = read_file(comm_socket, file, buff);
-                        (void) ok;
-                        fclose(file);
                     }
-
+                    closedir(dir);
+                    if (n <= 2) { //Directory Empty
+                        remove(workingPath);
+                    } else {
+                        //return neuspech
+                    }
                 }
                 else
                 {
-
+                    //return neuspech
                 }
 
+            } else {
+                fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
-            else {
-                printf("Zatim nedefinovana operace!\n");
-                send(comm_socket, buff, strlen(buff), 0);
-            }
+        }
+        else
+        {
+            printf("Nedefinovana operace! (PUT,DELETE,GET)\n");
+            send(comm_socket, buff, strlen(buff), 0);
+        }
 
-            printf("Connection to %s closed\n", str);
-            //exit(EXIT_SUCCESS);
+        printf("Connection to %s closed\n", str);
+        //exit(EXIT_SUCCESS);
         //}//fork
         close(comm_socket);
 	}	

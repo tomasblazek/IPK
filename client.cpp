@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <dirent.h>
 
 using namespace std;
 
@@ -76,7 +77,7 @@ bool send_file(int socket, FILE *f){
     }
 
     writeDataToClient(socket,file_content,file_size);
-
+    free(file_content);
     return true;
 }
 
@@ -374,9 +375,22 @@ int main (int argc, const char * argv[]) {
         fclose(file);
 
     }
+    /*
+    DIR *dir;
+    struct dirent *dent;
+    dir = opendir(".");
 
-
-
+    if(dir!=NULL)
+    {
+        while((dent=readdir(dir))!=NULL)
+        {
+            if(!(strcmp(dent->d_name,".")==0 || strcmp(dent->d_name,"..")==0 || (*dent->d_name) == '.' )) {
+                printf("%s\n",dent->d_name);
+            }
+        }
+    }
+    closedir(dir);
+    */
     free(buf);
     close(client_socket);
     return 0;
