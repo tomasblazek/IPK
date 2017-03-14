@@ -11,14 +11,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
-//#include <sys/types.h>
+#include <sys/types.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-//#include <netinet/in.h>
+#include <netinet/in.h>
 #include <unistd.h>
 
-
+using namespace std;
 
 #define BUFSIZE 1024
 
@@ -31,6 +32,53 @@ enum Operations{
     oper_lst
 };
 
+bool writeDataToClient(int sckt, const void *data, int datalen)
+{
+    const char *pdata = (const char*) data;
+
+    while (datalen > 0){
+        int numSent =(int) send(sckt, pdata, datalen, 0);
+        if (numSent <= 0){
+            if (numSent == 0){
+                fprintf(stderr,"The client was not written to: disconnected\n");
+            } else {
+                perror("The client was not written to");
+            }
+            return false;
+        }
+        pdata += numSent;
+        datalen -= numSent;
+    }
+
+    return true;
+}
+
+bool send_file(int socket, FILE *f){
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    rewind(f);
+    printf("Echo to server: %ld\n", file_size);
+
+    int bytesc = (int) send(socket,to_string(file_size).c_str(),BUFSIZE, 0);
+    if(bytesc < 0){
+        fprintf(stderr,"The client was not written to: disconnected\n");
+        return false;
+    }
+
+    char *file_content = (char*) malloc(file_size);
+    if(file_content == NULL){
+        fprintf(stderr,"Error: Malloc chyba filecontent.\n");
+        return false;
+    }
+    if(fread(file_content,file_size,1,f) != 1){
+        fprintf(stderr,"Error: Chyba fread.\n");
+        return false;
+    }
+
+    writeDataToClient(socket,file_content,file_size);
+
+    return true;
+}
 
 bool read_file(int socket, FILE *f, char* buf) {
     long int file_size = atol(buf);
@@ -119,9 +167,10 @@ void parse_remotePath(const char *argv2, char *hostname, int *port_number, char 
         c[i] = argv2[i];
     }
     c[i] = '\0';
-    if(strcmp(c,"http://"))
-        fprintf(stderr,"Error: Missing http:// at parameter REMOTE-PATH.\n");
-
+    if(strcmp(c,"http://")) {
+        fprintf(stderr, "Error: Missing http:// at parameter REMOTE-PATH.\n");
+        exit(EXIT_FAILURE);
+    }
 
     //get hostname processing
     for (i = 7; i < strlen(argv2); i++){
@@ -170,8 +219,8 @@ int parse_arguments(int argc,const char *argv[]){
             return oper_mkd;
         }
         else if(!strcmp(argv[1],"put")){
-            if(argc == 4){
-                fprintf(stderr,"Error: Bad count of arguments.\n");
+            if(argc != 4){
+                fprintf(stderr,"Error: Bad counaaat of arguments.\n");
                 exit(EXIT_FAILURE);
             }
             else
@@ -270,19 +319,28 @@ int main (int argc, const char * argv[]) {
     }
 
 
-    /* prijeti odpovedi a jeji vypsani */
-    bzero(buf, BUFSIZE);
-    bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
-    if (bytesrx < 0) {
-        free(buf);
-        perror("Error: in recvfrom");
-        exit(EXIT_FAILURE);
-    }
-    printf("Echo from server: %s\n", buf);
+//    /* prijeti odpovedi a jeji vypsani */
+//    bzero(buf, BUFSIZE);
+//    bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
+//    if (bytesrx < 0) {
+//        free(buf);
+//        perror("Error: in recvfrom");
+//        exit(EXIT_FAILURE);
+//    }
+//    printf("Echo from server: %s\n", buf);
 
-
+    FILE *file;
     if(operation == oper_get) {
-        FILE *file;
+        /* prijeti odpovedi a jeji vypsani */
+        bzero(buf, BUFSIZE);
+        bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
+        if (bytesrx < 0) {
+            free(buf);
+            perror("Error: in recvfrom");
+            exit(EXIT_FAILURE);
+        }
+        printf("Echo from server: %s\n", buf);
+
         if(argc == 4) {
             file = fopen(localPath,"wb");
         }
@@ -292,7 +350,7 @@ int main (int argc, const char * argv[]) {
         }
 
         if(file == NULL){
-            perror("Error: Cant open file for write.");
+            perror("Error: Cant open file for write in operation get.");
         }
         else
         {
@@ -302,6 +360,18 @@ int main (int argc, const char * argv[]) {
         }
     }
     else if(operation == oper_put){
+        file = fopen(localPath, "rb");
+        if (file == NULL) {
+            fprintf(stderr, "Error: Cant open file for write in operation put.\n");
+            free(buf);
+            close(client_socket);
+            exit(EXIT_FAILURE);
+        }
+
+        if (!send_file(client_socket, file))
+            printf("Chyba pri posilani");
+
+        fclose(file);
 
     }
 
