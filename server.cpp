@@ -218,7 +218,7 @@ int main (int argc, const char *argv[]) {
             if (!strcmp(c, "GET")) { //get,lst
                 //GET path
                 i++; //jump over space
-                i++; //jump over /
+                //i++; //jump over /
                 shift = i;
                 for (; i < strlen(buff); i++) {
                     if (buff[i] == '?') {
