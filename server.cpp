@@ -19,11 +19,38 @@ using namespace std;
 #define S_FILE 100
 #define S_FOLDER 101
 
+const char OK[] = "HTTP/1.1 200 OK\r\n";
+const char NotFound[] = "HTTP/1.1 404 Not Found\r\n";
+const char BadRequest[] = "HTTP/1.1 400 Bad Request\r\n";
+
+const char ErrNotDir[] = "Not a directory.";
+const char ErrDirNotFound[] = "Directory not found.";
+const char ErrDirNotEmpty[] = "Directory not empty.";
+const char ErrAlreadyExist[] = "Already exists.";
+const char ErrNotFile[] = "Not a file.";
+const char ErrFileNotFound[] = "File not found.";
+const char ErrUserNotFound[] = "User Account Not Found";
+
+
 /**
- * Určuje zdali na zadane ceste se nachazi adresar nebo soubor. Pokud neni nalezen vraci false.
+ * Get information about existence of file or directory.
  * @param path
- * @param FilOrFol
- * @return
+ * @return False when obeject not exist.
+ */
+bool isExist(char* path){
+    FILE *f = fopen(path,"r");
+    if(f==NULL) {
+        return false;
+    }
+
+    fclose(f);
+    return true;
+}
+/**
+ * Get information if object on path is folder or file by FLAG (FilOrFol).
+ * @param path
+ * @param FilOrFol  Set searching type of object.
+ * @return  If obejct not exit return false.
  */
 bool fileOrDirectory(char* path, int FilOrFol) {
     struct stat statbuf;
@@ -54,10 +81,53 @@ bool fileOrDirectory(char* path, int FilOrFol) {
 }
 
 
+string makeResponse(char* path, long lenght, const char *errCode){
+    string response;
+    char head[BUFSIZE];
+    //DATUM
+    char date[BUFSIZE];
+    time_t now = time(0);
+    tm tm = *gmtime(&now);
+    strftime(date, sizeof(date), "Date: %a, %d %b %Y %H:%M:%S %Z\r\n", &tm);
+
+    //CONTENT-TYPE
+    char MIME[BUFSIZE];
+    if(!strcmp(errCode,OK) && path != NULL) {
+        string buf = "file --mime-type ";
+        buf += path;
+        FILE *mimeFile = popen(buf.c_str(), "r");
+        if (mimeFile == NULL) {
+            perror("Error: Cannot get MIME type of file.\n");
+        }
+        char *mime_type = NULL;
+        if (fgets(MIME, BUFSIZE, mimeFile) != NULL) {
+            mime_type = strstr(MIME, " ");
+        }
+        fclose(mimeFile);
+        strcpy(MIME, "Content-Type: ");
+        strcat(MIME, mime_type + 1);//+1 jump over space TODO \r\n
+    }
+    else
+    {
+        sprintf(MIME,"Content-Type: text/plain\r\n");
+    }
+    //OK + others
+    sprintf(head,"%s%s%sContent-Lenght: %ld\r\n",errCode,date,MIME,lenght);
+
+    //ACCEPT ECODING
+    strcat(head,"Content-Encoding: identity\r\n\r\n");
+    printf("%ld",strlen(head));
+
+    response = head;
+
+    return response;
+}
+
 bool read_file(int socket, FILE *f, char* Headbuffer, int bytesres) {
     long int file_size = 0;
     char buffer[BUFSIZE];
     long int size = 0;
+
 
     //Ukazatel na radek s delkou obsahu
     char *ptr2Lenght = strstr(Headbuffer,"Content-Lenght: ");
@@ -134,15 +204,13 @@ bool writeDataToClient(int sckt, const void *data,long int datalen)
     return true;
 }
 
-bool send_file(int socket, FILE *f){
+bool send_file(int socket, FILE *f, char* path){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     rewind(f);
-    char head[BUFSIZE];
 
-    sprintf(head,"HTTP/1.1 200 OK\r\nContent-Lenght: %ld\r\n\r\n",file_size);
-
-    string data = head;
+    string data = makeResponse(path,file_size,OK);
+    long headLen = strlen(data.c_str());
 
     if(file_size > 0) {
         char *file_content = (char *) malloc(file_size);
@@ -154,13 +222,10 @@ bool send_file(int socket, FILE *f){
             fprintf(stderr, "Error: Chyba fread.\n");
             return false;
         }
-
-
         data += string(file_content,file_size);
         free(file_content);
-        //printf("%s",data.c_str());
 
-        writeDataToClient(socket, data.c_str(), file_size+strlen(head));
+        writeDataToClient(socket, data.c_str(), headLen + file_size);
     }
 
     return true;
@@ -187,14 +252,14 @@ int main (int argc, const char *argv[]) {
 	while ((argument = getopt(argc, (char* const*) argv, "p:r:")) != -1) {
 		switch (argument) {
 			case 'r':
-				printf("Root directory: %s\n",optarg);
+				//printf("Root directory: %s\n",optarg);
                 strcpy(root_folder,optarg);
                 strcat(root_folder,"/");
                 root_folder_def = true;
 				break;
 			case 'p':
                 port_number = atoi(optarg);
-				printf("Port number: %s (%d)\n", optarg,port_number);
+				//printf("Port number: %s (%d)\n", optarg,port_number);
 				break;
 			default:
                 fprintf(stderr,"Error: Unknown parameters.\n");
@@ -208,12 +273,12 @@ int main (int argc, const char *argv[]) {
         }
     }
 
-	fprintf(stderr,"-r <ROOT-FOLDER> %s -p <port> %d\n", root_folder , port_number);
+	//fprintf(stderr,"-r <ROOT-FOLDER> %s -p <port> %d\n", root_folder , port_number);
 
 	socklen_t sa_client_len=sizeof(sa_client);
 	if ((welcome_socket = socket(PF_INET6, SOCK_STREAM, 0)) < 0)
 	{
-		perror("ERROR: socket");
+		perror("Error: socket.");
 		exit(EXIT_FAILURE);
 	}
 	memset(&sa,0,sizeof(sa));
@@ -223,12 +288,12 @@ int main (int argc, const char *argv[]) {
     
 	if ((rc = bind(welcome_socket, (struct sockaddr*)&sa, sizeof(sa))) < 0)
 	{
-		perror("ERROR: bind");
+		perror("Error: bind");
 		exit(EXIT_FAILURE);		
 	}
 	if ((listen(welcome_socket, 1)) < 0)
 	{
-		perror("ERROR: listen");
+		perror("Error: listen");
 		exit(EXIT_FAILURE);				
 	}
 
@@ -240,7 +305,7 @@ int main (int argc, const char *argv[]) {
         if (comm_socket < 0) {
             fprintf(stderr, "Unknown error.");
         }
-        /*
+        /* MULTI PROCESS VARIANT
         pid_t client_processPID = fork();
         if(client_processPID < 0) {
             perror("Error: Fork client_process failed.\n");
@@ -251,14 +316,12 @@ int main (int argc, const char *argv[]) {
         if(client_processPID == 0) {
         */
         if (inet_ntop(AF_INET6, &sa_client.sin6_addr, str, sizeof(str))) {
-            printf("INFO: New connection:\n");
-            printf("INFO: Client address is %s\n", str);
-            printf("INFO: Client port is %d\n", ntohs(sa_client.sin6_port));
+            //printf("INFO: New connection:\n");
+            //printf("INFO: Client address is %s\n", str);
+            //printf("INFO: Client port is %d\n", ntohs(sa_client.sin6_port));
         }
 
-        //char OK[] = "HTTP/1.1 404 200 OK\n";
-        char NotFound[] = "HTTP/1.1 404 Not Found\n";
-        //char BadRequest[] = "HTTP/1.1 400 Bad Request\n";
+
 
         char buff[BUFSIZE];
         char path[BUFSIZE];
@@ -275,7 +338,7 @@ int main (int argc, const char *argv[]) {
             //TODO chyba
         }
 
-        printf("Client message(%d): %s", res,buff);
+        //printf("Client message(%d):%s", res,buff);
         //////////////PARSE HEAD///////////////////////
         //GET RESTful OPERATION
         int i = 0;
@@ -300,8 +363,6 @@ int main (int argc, const char *argv[]) {
         }
         path[i - shift] = '\0';
         strcat(workingPath,path);
-        printf("CESTA:%s\n",workingPath);
-
 
         //GET type file/folder
         shift = i;
@@ -318,93 +379,135 @@ int main (int argc, const char *argv[]) {
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
                 file = fopen(workingPath, "rb");
                 if (file == NULL) {
-                    fprintf(stderr, "Error: Cant open file |%s| for write in operation read.", path);
-                    send(comm_socket, NotFound, strlen(NotFound), 0);
+                    string response = makeResponse(NULL,strlen(ErrFileNotFound),NotFound);
+                    response += ErrFileNotFound;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                 } else {
 
-                    if (!send_file(comm_socket, file))
-                        printf("Chyba pri posilani");
+                    if (!send_file(comm_socket, file, workingPath))
+                        fprintf(stderr,"Error: Chyba pri posilani.");
 
                     fclose(file);
                 }
             } else if (!strcmp(fileOrFolder_Flag, "?type=folder")) {
-                if(!fileOrDirectory(workingPath,S_FOLDER)){
-                    //TODO send fail
-                }else {
-                    DIR *dir;
-                    struct dirent *dent;
-                    dir = opendir(workingPath);
+                if(!isExist(workingPath)){
+                    string response = makeResponse(NULL,strlen(ErrDirNotFound),NotFound);
+                    response += ErrDirNotFound;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                } else {
+                    if (!fileOrDirectory(workingPath, S_FOLDER)) {
+                        string response = makeResponse(NULL, strlen(ErrNotDir), BadRequest);
+                        response += ErrNotDir;
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                    } else {
+                        DIR *dir;
+                        struct dirent *dent;
+                        dir = opendir(workingPath);
+                        string lsOut;
 
-                    if (dir != NULL) {
-                        while ((dent = readdir(dir)) != NULL) {
-                            if (!(strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0 ||
-                                  (*dent->d_name) == '.')) {
-                                printf("%s\n", dent->d_name);
+                        if (dir != NULL) {
+                            while ((dent = readdir(dir)) != NULL) {
+                                if (!(strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0 ||
+                                      (*dent->d_name) == '.')) {
+                                    lsOut += dent->d_name;
+                                    lsOut += '\n';
+                                }
                             }
                         }
+                        string response = makeResponse(NULL, strlen(lsOut.c_str()), OK);
+                        response += lsOut.c_str();
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                        closedir(dir);
                     }
-                    closedir(dir);
                 }
             } else {
                 fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
         }else if(!strcmp(c,"PUT")){
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
-                file = fopen(workingPath, "wb");
-                if (file == NULL) {
-                    perror("Error: Cant open file for write.");
-                } else {
-                    bool ok = read_file(comm_socket, file, buff,res);
-                    (void) ok;
-                    fclose(file);
+                if(isExist(workingPath)){
+                    string response = makeResponse(NULL,strlen(ErrAlreadyExist),BadRequest);
+                    response += ErrAlreadyExist;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                 }
-
+                else
+                {
+                    file = fopen(workingPath, "wb");
+                    if (file == NULL) {
+                        perror("Error: Cant open file for write.");
+                    } else {
+                        bool ok = read_file(comm_socket, file, buff, res);
+                        if (!ok) {
+                            fprintf(stderr, "Error: Read in operation PUT failed.\n");
+                        }
+                        string response = makeResponse(NULL,0,OK);
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                        fclose(file);
+                    }
+                }
             } else if(!strcmp(fileOrFolder_Flag, "?type=folder"))
             {
                 int result = mkdir(workingPath, 0777);
                 if(result == 0){
-                    // send succes
+                    string response = makeResponse(NULL,0,OK);
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                 } else{
-                    //Already exist dir or not permision
-                    fprintf(stderr,"Already exists.");
+                    string response = makeResponse(NULL,strlen(ErrAlreadyExist),BadRequest);
+                    response += ErrAlreadyExist;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                 }
-
             } else {
                 fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
 
         }else if(!strcmp(c,"DELETE")) {
-            //TODO DELETE
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
-                //del
-                if(fileOrDirectory(workingPath,S_FILE)){
-                    printf("Deleteeee");
-                    remove(workingPath);
-                } else{
-                    printf("NEDeleteeee");
+                if(!isExist(workingPath)){
+                    string response = makeResponse(NULL,strlen(ErrFileNotFound),NotFound);
+                    response += ErrFileNotFound;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                } else {
+                    if (fileOrDirectory(workingPath, S_FILE)) {
+                        remove(workingPath);
+                        string response = makeResponse(NULL, 0, OK);
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                    } else {
+                        string response = makeResponse(NULL, strlen(ErrNotFile), BadRequest);
+                        response += ErrNotFile;
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                    }
                 }
             } else if(!strcmp(fileOrFolder_Flag, "?type=folder")) {
-                //rmd
-                if(fileOrDirectory(workingPath,S_FOLDER)) {
-                    int n = 0;
-                    struct dirent *d;
-                    DIR *dir = opendir(workingPath);
-                    while ((d = readdir(dir)) != NULL) {
-                        if (++n > 2)
-                            break;
-                    }
-                    closedir(dir);
-                    if (n <= 2) { //Directory Empty
-                        remove(workingPath);
+                if(!isExist(workingPath)){
+                    string response = makeResponse(NULL,strlen(ErrDirNotFound),NotFound);
+                    response += ErrDirNotFound;
+                    writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                }
+                else {
+                    if (fileOrDirectory(workingPath, S_FOLDER)) {
+                        int n = 0;
+                        struct dirent *d;
+                        DIR *dir = opendir(workingPath);
+                        while ((d = readdir(dir)) != NULL) {
+                            if (++n > 2)
+                                break;
+                        }
+                        closedir(dir);
+                        if (n <= 2) { //Directory Empty
+                            remove(workingPath);
+                            string response = makeResponse(NULL, 0, OK);
+                            writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                        } else {
+                            string response = makeResponse(NULL,strlen(ErrDirNotEmpty),BadRequest);
+                            response += ErrDirNotEmpty;
+                            writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                        }
                     } else {
-                        //return neuspech
+                        string response = makeResponse(NULL, strlen(ErrNotDir), BadRequest);
+                        response += ErrNotDir;
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                     }
                 }
-                else
-                {
-                    //return neuspech
-                }
-
             } else {
                 fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
@@ -415,7 +518,7 @@ int main (int argc, const char *argv[]) {
             send(comm_socket, buff, strlen(buff), 0);
         }
 
-        printf("Connection to %s closed\n", str);
+        //printf("Connection to %s closed\n", str);
         //exit(EXIT_SUCCESS);
         //}//fork
         close(comm_socket);

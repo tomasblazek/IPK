@@ -9,6 +9,7 @@
 
 
 #include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -33,7 +34,11 @@ enum Operations{
     oper_lst
 };
 
-bool writeDataToClient(int sckt, const void *data, long int datalen)
+const char OK[] = "HTTP/1.1 200 OK\r\n";
+const char NotFound[] = "HTTP/1.1 404 Not Found\r\n";
+const char BadRequest[] = "HTTP/1.1 400 Bad Request\r\n";
+
+bool writeDataToServer(int sckt, const void *data, long int datalen)
 {
     const char *pdata = (const char*) data;
 
@@ -81,7 +86,7 @@ bool send_file(int socket, FILE *f,char *rest){
         free(file_content);
         //printf("%s",data.c_str());
 
-        writeDataToClient(socket, data.c_str(), strlen(head) + file_size);
+        writeDataToServer(socket, data.c_str(), strlen(head) + file_size);
     }
 
     return true;
@@ -98,6 +103,7 @@ bool read_file(int socket, FILE *f) {
         perror("Error: in recvfrom");
         exit(EXIT_FAILURE);
     }
+    //printf("Server message: %s|||",buffer);
 
     //Ukazatel na radek s delkou obsahu
     char *ptr2Lenght = strstr(buffer,"Content-Lenght: ");
@@ -116,6 +122,24 @@ bool read_file(int socket, FILE *f) {
     //+4 protoze chci ukazovat jeste o znak dal na data
     //printf("strlen(shift2Data): %ld a %ld...pocet znaku: %ld",strlen(shift2Data),shift2Data-buffer,bytesres - (shift2Data-buffer));
     long int dataLong = bytesres - (shift2Data-buffer);
+
+    char Code[BUFSIZE];
+    int i = 0;
+    for(i = 0; i < bytesres;i++){
+        Code[i] = buffer[i];
+
+        if(Code[i] == '\n'){
+            break;
+        }
+    }
+    Code[++i] = '\0';
+    if(!strcmp(Code,NotFound) || !strcmp(Code,BadRequest)){
+       f = stderr;
+    }else if(strcmp(Code, OK)) {
+        fprintf(stderr,"Error: Bad REST response.\n");
+        exit(EXIT_FAILURE);
+    }
+
     if(dataLong > 0) {
         if (fwrite(shift2Data, dataLong, 1, f) != 1) {
             fprintf(stderr, "Error: fwrite1 chyba.\n");
@@ -187,6 +211,18 @@ char* makeRest(int operation, char *remotePath) {
         strcat(head,"folder");
     }
     strcat(head," HTTP/1.1\r\n");
+
+    //DATUM
+    char date[1024];
+    time_t now = time(0);
+    tm tm = *gmtime(&now);
+    strftime(date, sizeof(date), "Date: %a, %d %b %Y %H:%M:%S %Z\r\n", &tm);
+    strcat(head,date);
+    //ACCEPT
+    strcat(head,"Accept: text/plain\r\n");
+    //ACCEPT ECODING
+    strcat(head,"Accept-Encoding: identity\r\n");
+
 
 
     return head;
@@ -314,7 +350,7 @@ int main (int argc, const char * argv[]) {
 
     parse_remotePath(argv[2], server_hostname, &port_number, remotePath);
 
-    printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
+    //printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
 
 
     /* 2. ziskani adresy serveru pomoci DNS */
@@ -330,7 +366,7 @@ int main (int argc, const char * argv[]) {
     server_address.sin_port = htons(port_number);
 
     /* tiskne informace o vzdalenem soketu */
-    printf("INFO: Server socket: %s : %d \n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
+    //printf("INFO: Server socket: %s : %d \n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
 
     /* Vytvoreni soketu */
 	if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) <= 0)
@@ -366,10 +402,11 @@ int main (int argc, const char * argv[]) {
         }
         else
         {
-            writeDataToClient(client_socket,rest,strlen(rest));
+            strcat(rest,"\r\n");
+            writeDataToServer(client_socket,rest,strlen(rest));
 
             bool ok = read_file(client_socket, file);
-            (void) ok;
+            (void) ok;//TODO
             fclose(file);
         }
     }
@@ -382,23 +419,37 @@ int main (int argc, const char * argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        if (!send_file(client_socket, file, rest))
-            printf("Chyba pri posilani");
+        //CONTENT-TYPE
+        string buf = "file --mime-type ";
+        buf += localPath;
+        FILE *mimeFile = popen(buf.c_str(), "r");
+        if(mimeFile == NULL){
+            perror("Error: Cannot get MIME type of file.\n");
+        }
+        char MIME[BUFSIZE];
+        char *mime_type = NULL;
+        if( fgets(MIME,BUFSIZE,mimeFile)!=NULL){
+            mime_type = strstr(MIME," ");
+        }
+        fclose(mimeFile);
+        strcat(rest, "Content-Type: ");
+        strcat(rest, mime_type+1);//+1 jump over space TODO \r\n
 
+        if (!send_file(client_socket, file, rest))
+            fprintf(stderr,"Error: Chyba pri posilani.");
         fclose(file);
 
+        bool ok = read_file(client_socket, stderr);
+        (void) ok;//TODO
     }
     else
     {
-        int bytestx = (int)send(client_socket, rest, strlen(rest), 0);
-        if (bytestx < 0) {
-            free(rest);
-            perror("Error in sendto");
-            exit(EXIT_FAILURE);
-        }
+        strcat(rest,"\r\n");
+        writeDataToServer(client_socket,rest,strlen(rest));
 
+        bool ok = read_file(client_socket, stdout);
+        (void) ok;//TODO
     }
-
 
     free(rest);
     close(client_socket);
