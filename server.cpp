@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include <string.h>
 #include <string>
 #include <sys/socket.h>
@@ -53,41 +54,70 @@ bool fileOrDirectory(char* path, int FilOrFol) {
 }
 
 
-bool read_file(int socket, FILE *f, char* buf) {
-    long int file_size = atol(buf);
+bool read_file(int socket, FILE *f, char* Headbuffer, int bytesres) {
+    long int file_size = 0;
+    char buffer[BUFSIZE];
+    long int size = 0;
 
-    if (file_size > 0) {
-        char buffer[BUFSIZE];
-        int size = 0;
-        while (size < file_size) {
-            bzero(buffer, BUFSIZE);
-            int bytesres = (int) recv(socket, buffer, BUFSIZE, 0);
-            if (bytesres < 0) {
-                perror("Error: in recvfrom\n");
-                return false;
-            }
-            if (fwrite(buffer, bytesres, 1, f) != 1) {
-                fprintf(stderr, "Error: fwrite chyba.\n");
-                return false;
-            }
-            size += bytesres;
+    //Ukazatel na radek s delkou obsahu
+    char *ptr2Lenght = strstr(Headbuffer,"Content-Lenght: ");
+    while (*ptr2Lenght) {
+        if (isdigit(*ptr2Lenght)) {
+            file_size = strtol(ptr2Lenght, &ptr2Lenght, 10);
+            break;
+        } else { // Otherwise, move on to the next character.
+            ptr2Lenght++;
         }
+    }
 
-        if (size != file_size) {
-            fprintf(stderr, "Error: size != file_size.\n");
+    char *shift2Data = strstr(Headbuffer,"\r\n\r\n"); //dostanu ukazatel na \r takze jeste +4 k datům
+    shift2Data += 4;
+
+    //+4 protoze chci ukazovat jeste o znak dal na data
+    //printf("strlen(shift2Data): %ld a %ld...pocet znaku: %ld",strlen(shift2Data),shift2Data-buffer,bytesres - (shift2Data-buffer));
+    long int dataLong = bytesres - (shift2Data-Headbuffer);
+    if(dataLong > 0) {
+        if (fwrite(shift2Data, dataLong, 1, f) != 1) {
+            fprintf(stderr, "Error: fwrite1 chyba.\n");
+            return false;
+        }
+    }
+    //else return true
+
+    size += dataLong;
+    //printf("size: %ld (%d)!= file_size: %ld\n",size,bytesres,file_size);
+
+    while (size < file_size) {
+        bzero(buffer, BUFSIZE);
+        bytesres = (int) recv(socket, buffer, BUFSIZE, 0);
+        if (bytesres < 0) {
+            perror("Error: in recvfrom\n");
             return false;
         }
 
+        if (fwrite(buffer, bytesres, 1, f) != 1) {
+            fprintf(stderr, "Error: fwrite chyba.\n");
+            return false;
+        }
+        size += bytesres;
+        //printf("size: %ld (%d)!= file_size: %ld\n",size,bytesres,file_size);
     }
+
+    if (size != file_size) {
+        fprintf(stderr, "Error: size != file_size.\n");
+        return false;
+    }
+
     return true;
 }
 
-bool writeDataToClient(int sckt, const void *data, int datalen)
+bool writeDataToClient(int sckt, const void *data,long int datalen)
 {
     const char *pdata = (const char*) data;
 
-    while (datalen > 0){
+    if (datalen > 0){
         int numSent =(int) send(sckt, pdata, datalen, 0);
+
         if (numSent <= 0){
             if (numSent == 0){
                 fprintf(stderr,"The client was not written to: disconnected\n");
@@ -96,9 +126,10 @@ bool writeDataToClient(int sckt, const void *data, int datalen)
             }
             return false;
         }
-        pdata += numSent;
-        datalen -= numSent;
+        //pdata += numSent;
+        //datalen -= numSent;
     }
+
 
     return true;
 }
@@ -107,24 +138,30 @@ bool send_file(int socket, FILE *f){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     rewind(f);
-    printf("%ld\n",file_size);
-    int bytesc = send(socket,to_string(file_size).c_str(),BUFSIZE, 0);
-    if(bytesc < 0){
-        fprintf(stderr,"The client was not written to: disconnected\n");
-        return false;
-    }
+    char head[BUFSIZE];
 
-    char *file_content = (char*) malloc(file_size);
-    if(file_content == NULL){
-        fprintf(stderr,"Error: Malloc chyba filecontent.\n");
-        return false;
-    }
-    if(fread(file_content,file_size,1,f) != 1){
-        fprintf(stderr,"Error: Chyba fread.\n");
-        return false;
-    }
+    sprintf(head,"HTTP/1.1 200 OK\r\nContent-Lenght: %ld\r\n\r\n",file_size);
 
-    writeDataToClient(socket,file_content,file_size);
+    string data = head;
+
+    if(file_size > 0) {
+        char *file_content = (char *) malloc(file_size);
+        if (file_content == NULL) {
+            fprintf(stderr, "Error: Malloc chyba filecontent.\n");
+            return false;
+        }
+        if (fread(file_content, file_size, 1, f) != 1) {
+            fprintf(stderr, "Error: Chyba fread.\n");
+            return false;
+        }
+
+
+        data += string(file_content,file_size);
+        free(file_content);
+        //printf("%s",data.c_str());
+
+        writeDataToClient(socket, data.c_str(), file_size+strlen(head));
+    }
 
     return true;
 }
@@ -234,13 +271,15 @@ int main (int argc, const char *argv[]) {
 
         bzero(buff, BUFSIZE);
         res = recv(comm_socket, buff, sizeof(buff), 0);
-        if (res <= 0)
-            break;
-        printf("Client message: %s", buff);
+        if (res <= 0){
+            //TODO chyba
+        }
+
+        printf("Client message(%d): %s", res,buff);
         //////////////PARSE HEAD///////////////////////
         //GET RESTful OPERATION
-        unsigned int i = 0;
-        for (i = 0; i < strlen(buff); i++) {
+        int i = 0;
+        for (i = 0; i < res; i++) {
             if (buff[i] == ' ') {
                 break;
             }
@@ -248,11 +287,12 @@ int main (int argc, const char *argv[]) {
         }
         c[i] = '\0';
 
+
         int shift;
         i++; //jump over space
         //i++; //jump over /
         shift = i;
-        for (; i < strlen(buff); i++) {
+        for (; i < res; i++) {
             if (buff[i] == '?') {
                 break;
             }
@@ -262,15 +302,17 @@ int main (int argc, const char *argv[]) {
         strcat(workingPath,path);
         printf("CESTA:%s\n",workingPath);
 
+
         //GET type file/folder
         shift = i;
-        for (; i < strlen(buff); i++) {
+        for (; i < res; i++) {
             if (buff[i] == ' ') {
                 break;
             }
             fileOrFolder_Flag[i - shift] = buff[i];
         }
         fileOrFolder_Flag[i - shift] = '\0';
+
         ///////////////////////////////////////////////
         if (!strcmp(c, "GET")) { //get,lst
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
@@ -285,9 +327,24 @@ int main (int argc, const char *argv[]) {
 
                     fclose(file);
                 }
-            } else if (!strcmp(c, "?type=folder")) {
-                    //TODO lst
+            } else if (!strcmp(fileOrFolder_Flag, "?type=folder")) {
+                if(!fileOrDirectory(workingPath,S_FOLDER)){
+                    //TODO send fail
+                }else {
+                    DIR *dir;
+                    struct dirent *dent;
+                    dir = opendir(workingPath);
 
+                    if (dir != NULL) {
+                        while ((dent = readdir(dir)) != NULL) {
+                            if (!(strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0 ||
+                                  (*dent->d_name) == '.')) {
+                                printf("%s\n", dent->d_name);
+                            }
+                        }
+                    }
+                    closedir(dir);
+                }
             } else {
                 fprintf(stderr, "Error: In function PUT defined other type (file/folder).\n");
             }
@@ -297,13 +354,7 @@ int main (int argc, const char *argv[]) {
                 if (file == NULL) {
                     perror("Error: Cant open file for write.");
                 } else {
-                    bzero(buff, BUFSIZE);
-                    res = recv(comm_socket, buff, sizeof(buff), 0);
-                    if (res <= 0)
-                        break;
-                    printf("Client SIZE: %s", buff);
-
-                    bool ok = read_file(comm_socket, file, buff);
+                    bool ok = read_file(comm_socket, file, buff,res);
                     (void) ok;
                     fclose(file);
                 }

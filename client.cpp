@@ -33,11 +33,11 @@ enum Operations{
     oper_lst
 };
 
-bool writeDataToClient(int sckt, const void *data, int datalen)
+bool writeDataToClient(int sckt, const void *data, long int datalen)
 {
     const char *pdata = (const char*) data;
 
-    while (datalen > 0){
+    if (datalen > 0){
         int numSent =(int) send(sckt, pdata, datalen, 0);
         if (numSent <= 0){
             if (numSent == 0){
@@ -47,70 +47,109 @@ bool writeDataToClient(int sckt, const void *data, int datalen)
             }
             return false;
         }
-        pdata += numSent;
-        datalen -= numSent;
+        //pdata += numSent;
+       // datalen -= numSent;
     }
 
     return true;
 }
 
-bool send_file(int socket, FILE *f){
+
+bool send_file(int socket, FILE *f,char *rest){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     rewind(f);
-    printf("Echo to server: %ld\n", file_size);
+    char head[BUFSIZE];
 
-    int bytesc = (int) send(socket,to_string(file_size).c_str(),BUFSIZE, 0);
-    if(bytesc < 0){
-        fprintf(stderr,"The client was not written to: disconnected\n");
-        return false;
-    }
+    sprintf(head,"%sContent-Lenght: %ld\r\n\r\n",rest,file_size);
 
-    char *file_content = (char*) malloc(file_size);
-    if(file_content == NULL){
-        fprintf(stderr,"Error: Malloc chyba filecontent.\n");
-        return false;
-    }
-    if(fread(file_content,file_size,1,f) != 1){
-        fprintf(stderr,"Error: Chyba fread.\n");
-        return false;
-    }
+    string data = head;
 
-    writeDataToClient(socket,file_content,file_size);
-    free(file_content);
-    return true;
-}
-
-bool read_file(int socket, FILE *f, char* buf) {
-    long int file_size = atol(buf);
-
-    if (file_size > 0) {
-        char buffer[BUFSIZE];
-        int size = 0;
-        while (size < file_size) {
-            bzero(buffer, BUFSIZE);
-            int bytesres = (int) recv(socket, buffer, BUFSIZE, 0);
-            if (bytesres < 0) {
-                perror("Error: in recvfrom\n");
-                return false;
-            }
-            if (fwrite(buffer, bytesres, 1, f) != 1) {
-                fprintf(stderr, "Error: fwrite chyba.\n");
-                return false;
-            }
-            size += bytesres;
+    if(file_size > 0) {
+        char *file_content = (char *) malloc(file_size);
+        if (file_content == NULL) {
+            fprintf(stderr, "Error: Malloc chyba filecontent.\n");
+            return false;
         }
-
-        if (size != file_size) {
-            fprintf(stderr, "Error: size != file_size.\n");
+        if (fread(file_content, file_size, 1, f) != 1) {
+            fprintf(stderr, "Error: Chyba fread.\n");
             return false;
         }
 
+
+        data += string(file_content,file_size);
+        free(file_content);
+        //printf("%s",data.c_str());
+
+        writeDataToClient(socket, data.c_str(), strlen(head) + file_size);
     }
+
     return true;
 }
 
-char* makeHeader(int operation, char *remotePath) {
+bool read_file(int socket, FILE *f) {
+    long int file_size = 0;
+    char buffer[BUFSIZE];
+    long int size = 0;
+
+    bzero(buffer, BUFSIZE);
+    int bytesres = (int)recv(socket, buffer, BUFSIZE, 0);
+    if (bytesres < 0) {
+        perror("Error: in recvfrom");
+        exit(EXIT_FAILURE);
+    }
+
+    //Ukazatel na radek s delkou obsahu
+    char *ptr2Lenght = strstr(buffer,"Content-Lenght: ");
+    while (*ptr2Lenght) {
+        if (isdigit(*ptr2Lenght)) {
+            file_size = strtol(ptr2Lenght, &ptr2Lenght, 10);
+            break;
+        } else { // Otherwise, move on to the next character.
+            ptr2Lenght++;
+        }
+    }
+
+    char *shift2Data = strstr(buffer,"\r\n\r\n"); //dostanu ukazatel na \r takze jeste +4 k datům
+    shift2Data += 4;
+
+    //+4 protoze chci ukazovat jeste o znak dal na data
+    //printf("strlen(shift2Data): %ld a %ld...pocet znaku: %ld",strlen(shift2Data),shift2Data-buffer,bytesres - (shift2Data-buffer));
+    long int dataLong = bytesres - (shift2Data-buffer);
+    if(dataLong > 0) {
+        if (fwrite(shift2Data, dataLong, 1, f) != 1) {
+            fprintf(stderr, "Error: fwrite1 chyba.\n");
+            return false;
+        }
+    }
+    size += dataLong;
+    //printf("size: %ld (%d)!= file_size: %ld\n",size,bytesres,file_size);
+
+    while (size < file_size) {
+        bzero(buffer, BUFSIZE);
+        bytesres = (int) recv(socket, buffer, BUFSIZE, 0);
+        if (bytesres < 0) {
+            perror("Error: in recvfrom\n");
+            return false;
+        }
+
+        if (fwrite(buffer, bytesres, 1, f) != 1) {
+            fprintf(stderr, "Error: fwrite chyba.\n");
+            return false;
+        }
+        size += bytesres;
+        //printf("size: %ld (%d)!= file_size: %ld\n",size,bytesres,file_size);
+    }
+
+    if (size != file_size) {
+        fprintf(stderr, "Error: size != file_size.\n");
+        return false;
+    }
+
+    return true;
+}
+
+char* makeRest(int operation, char *remotePath) {
     char* head = (char*) malloc(BUFSIZE);
     if(head == NULL) {
         fprintf(stderr,"Error: Malloc head.");
@@ -147,7 +186,7 @@ char* makeHeader(int operation, char *remotePath) {
     {
         strcat(head,"folder");
     }
-    strcat(head," HTTP/1.1\n");
+    strcat(head," HTTP/1.1\r\n");
 
 
     return head;
@@ -252,7 +291,7 @@ int parse_arguments(int argc,const char *argv[]){
 }
 
 int main (int argc, const char * argv[]) {
-	int client_socket, port_number = 6677, bytestx, bytesrx;
+	int client_socket, port_number = 6677;
     //socklen_t serverlen;
     char server_hostname[1024];
     char remotePath[1024];
@@ -308,45 +347,17 @@ int main (int argc, const char * argv[]) {
     }
 
 
-    char* buf = makeHeader(operation, remotePath);
-    printf("%s\n",buf); //TODO smazat
+    char* rest = makeRest(operation, remotePath);
 
-    /* odeslani zpravy header na server */
-    bytestx = (int)send(client_socket, buf, BUFSIZE, 0);
-    if (bytestx < 0) {
-        free(buf);
-        perror("Error in sendto");
-        exit(EXIT_FAILURE);
-    }
-
-
-//    /* prijeti odpovedi a jeji vypsani */
-//    bzero(buf, BUFSIZE);
-//    bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
-//    if (bytesrx < 0) {
-//        free(buf);
-//        perror("Error: in recvfrom");
-//        exit(EXIT_FAILURE);
-//    }
-//    printf("Echo from server: %s\n", buf);
 
     FILE *file;
     if(operation == oper_get) {
-        /* prijeti odpovedi a jeji vypsani */
-        bzero(buf, BUFSIZE);
-        bytesrx = (int)recv(client_socket, buf, BUFSIZE, 0);
-        if (bytesrx < 0) {
-            free(buf);
-            perror("Error: in recvfrom");
-            exit(EXIT_FAILURE);
-        }
-        printf("Echo from server: %s\n", buf);
+        /* prijeti odpovedi VELIKOST OBSAHU */
 
         if(argc == 4) {
             file = fopen(localPath,"wb");
         }
-        else
-        {
+        else {
             file = fopen(basename(remotePath), "wb");
         }
 
@@ -355,7 +366,9 @@ int main (int argc, const char * argv[]) {
         }
         else
         {
-            bool ok = read_file(client_socket, file, buf);
+            writeDataToClient(client_socket,rest,strlen(rest));
+
+            bool ok = read_file(client_socket, file);
             (void) ok;
             fclose(file);
         }
@@ -364,34 +377,30 @@ int main (int argc, const char * argv[]) {
         file = fopen(localPath, "rb");
         if (file == NULL) {
             fprintf(stderr, "Error: Cant open file for write in operation put.\n");
-            free(buf);
+            free(rest);
             close(client_socket);
             exit(EXIT_FAILURE);
         }
 
-        if (!send_file(client_socket, file))
+        if (!send_file(client_socket, file, rest))
             printf("Chyba pri posilani");
 
         fclose(file);
 
     }
-    /*
-    DIR *dir;
-    struct dirent *dent;
-    dir = opendir(".");
-
-    if(dir!=NULL)
+    else
     {
-        while((dent=readdir(dir))!=NULL)
-        {
-            if(!(strcmp(dent->d_name,".")==0 || strcmp(dent->d_name,"..")==0 || (*dent->d_name) == '.' )) {
-                printf("%s\n",dent->d_name);
-            }
+        int bytestx = (int)send(client_socket, rest, strlen(rest), 0);
+        if (bytestx < 0) {
+            free(rest);
+            perror("Error in sendto");
+            exit(EXIT_FAILURE);
         }
+
     }
-    closedir(dir);
-    */
-    free(buf);
+
+
+    free(rest);
     close(client_socket);
     return 0;
 }
