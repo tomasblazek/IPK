@@ -32,6 +32,22 @@ const char ErrFileNotFound[] = "File not found.";
 const char ErrUserNotFound[] = "User Account Not Found";
 
 
+void makeSpacesInPath(char *path){
+    char helpPath[BUFSIZE];
+    strcpy(helpPath,path);
+    int jump = 0;
+    unsigned int i = 0;
+    for(i = 0; i < strlen(helpPath);i++){
+        if(helpPath[i+jump] == '%' && helpPath[i+1+jump] == '2' && helpPath[i+2+jump] == '0'){
+            path[i] = ' ';
+            jump += 2;
+        } else{
+            path[i] = helpPath[i+jump];
+        }
+    }
+    path[i] = '\0';
+}
+
 /**
  * Get information about existence of file or directory.
  * @param path
@@ -232,6 +248,26 @@ bool send_file(int socket, FILE *f, char* path){
 }
 
 
+bool checkUser(char* path, char* root_folder){
+    char userName[BUFSIZE];
+    char path2User[BUFSIZE];
+    unsigned int i = 0;
+    for(i = 0;i < strlen(path);i++){
+        if(path[i] == '/' && i != 0) {
+            break;
+        }
+        userName[i] = path[i];
+    }
+    userName[i] = '\0';
+
+    sprintf(path2User,"%s%s",root_folder,userName);
+
+    if(!fileOrDirectory(path2User,S_FOLDER)){
+        return false;
+    }
+    return true;
+}
+
 int main (int argc, const char *argv[]) {
 	int rc;
 	int welcome_socket;
@@ -254,11 +290,15 @@ int main (int argc, const char *argv[]) {
 			case 'r':
 				//printf("Root directory: %s\n",optarg);
                 strcpy(root_folder,optarg);
-                strcat(root_folder,"/");
+                //strcat(root_folder,"/");
                 root_folder_def = true;
 				break;
 			case 'p':
                 port_number = atoi(optarg);
+                if(port_number < 0 || port_number > 65535){
+                    fprintf(stderr,"Error: Port must be in <0,65535> range.\n");
+                    exit(EXIT_FAILURE);
+                }
 				//printf("Port number: %s (%d)\n", optarg,port_number);
 				break;
 			default:
@@ -335,11 +375,11 @@ int main (int argc, const char *argv[]) {
         bzero(buff, BUFSIZE);
         res = recv(comm_socket, buff, sizeof(buff), 0);
         if (res <= 0){
-            //TODO chyba
+            perror("Error: in recvfrom\n");
         }
 
         //printf("Client message(%d):%s", res,buff);
-        //////////////PARSE HEAD///////////////////////
+        //////////////PARSE HEAD REST PART///////////////////////
         //GET RESTful OPERATION
         int i = 0;
         for (i = 0; i < res; i++) {
@@ -362,6 +402,7 @@ int main (int argc, const char *argv[]) {
             path[i - shift] = buff[i];
         }
         path[i - shift] = '\0';
+        makeSpacesInPath(path);
         strcat(workingPath,path);
 
         //GET type file/folder
@@ -374,7 +415,14 @@ int main (int argc, const char *argv[]) {
         }
         fileOrFolder_Flag[i - shift] = '\0';
 
-        ///////////////////////////////////////////////
+        if(!checkUser(path,root_folder)){
+            string response = makeResponse(NULL, strlen(ErrUserNotFound), NotFound);
+            response += ErrUserNotFound;
+            writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+            close(comm_socket);
+            continue;
+        }
+        /////////////////PARSE HEAD REST PART END//////////////////////////////
         if (!strcmp(c, "GET")) { //get,lst
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
                 file = fopen(workingPath, "rb");
@@ -514,8 +562,8 @@ int main (int argc, const char *argv[]) {
         }
         else
         {
-            printf("Nedefinovana operace! (PUT,DELETE,GET)\n");
-            send(comm_socket, buff, strlen(buff), 0);
+            //printf("Nedefinovana operace! (PUT,DELETE,GET)\n");
+            //send(comm_socket, buff, strlen(buff), 0);
         }
 
         //printf("Connection to %s closed\n", str);

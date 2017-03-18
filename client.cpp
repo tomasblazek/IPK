@@ -223,8 +223,6 @@ char* makeRest(int operation, char *remotePath) {
     //ACCEPT ECODING
     strcat(head,"Accept-Encoding: identity\r\n");
 
-
-
     return head;
 }
 
@@ -278,13 +276,21 @@ void parse_remotePath(const char *argv2, char *hostname, int *port_number, char 
 
     //get remote path to working directory
     shift = i;
-
+    int jump = 0;
     for (; i < strlen(argv2); i++){
-        c[i-shift] = argv2[i];
+        if(argv2[i] == ' '){
+            c[i-shift+jump] = '%';
+            jump++;
+            c[i-shift+jump] = '2';
+            jump++;
+            c[i-shift+jump] = '0';
+        }
+        else {
+            c[i - shift + jump] = argv2[i];
+        }
     }
-    c[i-shift] = '\0';
+    c[i-shift+jump] = '\0';
     strcpy(remotePath,c);
-
 }
 
 
@@ -349,6 +355,10 @@ int main (int argc, const char * argv[]) {
     }
 
     parse_remotePath(argv[2], server_hostname, &port_number, remotePath);
+    if(port_number < 0 || 65535 < port_number){
+        fprintf(stderr,"Error: Port must be in <0,65535> range.\n");
+        exit(EXIT_FAILURE);
+    }
 
     //printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
 
