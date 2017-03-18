@@ -378,7 +378,7 @@ int main (int argc, const char *argv[]) {
 
         bzero(buff, BUFSIZE);
         res = recv(comm_socket, buff, sizeof(buff), 0);
-        if (res <= 0){
+        if (res < 0){
             perror("Error: in recvfrom\n");
         }
 

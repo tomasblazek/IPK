@@ -409,6 +409,9 @@ int main (int argc, const char * argv[]) {
 
         if(file == NULL){
             perror("Error: Cant open file for write in operation get.");
+            free(rest);
+            close(client_socket);
+            exit(EXIT_FAILURE);
         }
         else
         {
@@ -435,6 +438,8 @@ int main (int argc, const char * argv[]) {
         FILE *mimeFile = popen(buf.c_str(), "r");
         if(mimeFile == NULL){
             perror("Error: Cannot get MIME type of file.\n");
+            free(rest);
+            close(client_socket);
         }
         char MIME[BUFSIZE];
         char *mime_type = NULL;
