@@ -30,8 +30,12 @@ const char ErrAlreadyExist[] = "Already exists.";
 const char ErrNotFile[] = "Not a file.";
 const char ErrFileNotFound[] = "File not found.";
 const char ErrUserNotFound[] = "User Account Not Found";
+const char ErrUknownError[] = "Unknown error.";
 
-
+/**
+ * Decode path in header. Everz %20 to space.
+ * @param path
+ */
 void makeSpacesInPath(char *path){
     char helpPath[BUFSIZE];
     strcpy(helpPath,path);
@@ -96,7 +100,13 @@ bool fileOrDirectory(char* path, int FilOrFol) {
 
 }
 
-
+/**
+ * Makes response message.
+ * @param path Path to get MIME type of file when op GET.
+ * @param lenght Lenght of message.
+ * @param errCode
+ * @return
+ */
 string makeResponse(char* path, long lenght, const char *errCode){
     string response;
     char head[BUFSIZE];
@@ -139,6 +149,14 @@ string makeResponse(char* path, long lenght, const char *errCode){
     return response;
 }
 
+/**
+ * Read incomes message and print to file.
+ * @param socket
+ * @param f
+ * @param Headbuffer First come packet with header.
+ * @param bytesres Lenght of packet.
+ * @return
+ */
 bool read_file(int socket, FILE *f, char* Headbuffer, int bytesres) {
     long int file_size = 0;
     char buffer[BUFSIZE];
@@ -197,6 +215,13 @@ bool read_file(int socket, FILE *f, char* Headbuffer, int bytesres) {
     return true;
 }
 
+/**
+ * Send data to client.
+ * @param sckt
+ * @param data
+ * @param datalen Lenght of data.
+ * @return
+ */
 bool writeDataToClient(int sckt, const void *data,long int datalen)
 {
     const char *pdata = (const char*) data;
@@ -220,6 +245,13 @@ bool writeDataToClient(int sckt, const void *data,long int datalen)
     return true;
 }
 
+/**
+ * Send response message.
+ * @param socket
+ * @param f
+ * @param path
+ * @return
+ */
 bool send_file(int socket, FILE *f, char* path){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
@@ -247,7 +279,12 @@ bool send_file(int socket, FILE *f, char* path){
     return true;
 }
 
-
+/**
+ * Check if user exist.
+ * @param path
+ * @param root_folder
+ * @return
+ */
 bool checkUser(char* path, char* root_folder){
     char userName[BUFSIZE];
     char path2User[BUFSIZE];
@@ -271,6 +308,7 @@ bool checkUser(char* path, char* root_folder){
     }
     return true;
 }
+
 
 int main (int argc, const char *argv[]) {
 	int rc;
@@ -446,9 +484,11 @@ int main (int argc, const char *argv[]) {
                             writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                         } else {
 
-                            if (!send_file(comm_socket, file, workingPath))
-                                fprintf(stderr, "Error: Chyba pri posilani.");
-
+                            if (!send_file(comm_socket, file, workingPath)){
+                                string response = makeResponse(NULL,strlen(ErrUknownError),BadRequest);
+                                response += ErrUknownError;
+                                writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                            }
                             fclose(file);
                         }
                     }
@@ -498,7 +538,9 @@ int main (int argc, const char *argv[]) {
                 {
                     file = fopen(workingPath, "wb");
                     if (file == NULL) {
-                        perror("Error: Cant open file for write.");
+                        string response = makeResponse(NULL,strlen(ErrUknownError),BadRequest);
+                        response += ErrUknownError;
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
                     } else {
                         bool ok = read_file(comm_socket, file, buff, res);
                         if (!ok) {

@@ -38,6 +38,13 @@ const char OK[] = "HTTP/1.1 200 OK\r\n";
 const char NotFound[] = "HTTP/1.1 404 Not Found\r\n";
 const char BadRequest[] = "HTTP/1.1 400 Bad Request\r\n";
 
+/**
+ * Send data to Server.
+ * @param sckt Socket.
+ * @param data
+ * @param datalen Lenght of data.
+ * @return
+ */
 bool writeDataToServer(int sckt, const void *data, long int datalen)
 {
     const char *pdata = (const char*) data;
@@ -59,7 +66,13 @@ bool writeDataToServer(int sckt, const void *data, long int datalen)
     return true;
 }
 
-
+/**
+ * Send message to server.
+ * @param socket
+ * @param f
+ * @param rest
+ * @return
+ */
 bool send_file(int socket, FILE *f,char *rest){
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
@@ -92,6 +105,12 @@ bool send_file(int socket, FILE *f,char *rest){
     return true;
 }
 
+/**
+ * Read response from server.
+ * @param socket
+ * @param f
+ * @return
+ */
 bool read_file(int socket, FILE *f) {
     long int file_size = 0;
     char buffer[BUFSIZE];
@@ -175,6 +194,12 @@ bool read_file(int socket, FILE *f) {
     return retState;
 }
 
+/**
+ * Make first line of header of REST operation.
+ * @param operation
+ * @param remotePath
+ * @return
+ */
 char* makeRest(int operation, char *remotePath) {
     char* head = (char*) malloc(BUFSIZE);
     if(head == NULL) {
@@ -228,7 +253,13 @@ char* makeRest(int operation, char *remotePath) {
     return head;
 }
 
-
+/**
+ * Parse second argument to get hostname, portnumber and remote path.
+ * @param argv2
+ * @param hostname
+ * @param port_number
+ * @param remotePath
+ */
 void parse_remotePath(const char *argv2, char *hostname, int *port_number, char *remotePath){
     char c[BUFSIZE];
 
@@ -296,7 +327,12 @@ void parse_remotePath(const char *argv2, char *hostname, int *port_number, char 
 }
 
 
-
+/**
+ * Parse arguments and get operation.
+ * @param argc
+ * @param argv
+ * @return
+ */
 int parse_arguments(int argc,const char *argv[]){
     if (argc == 3 || argc == 4) {
         if(!strcmp(argv[1],"mkd")){
