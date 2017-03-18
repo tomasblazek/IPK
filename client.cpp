@@ -96,6 +96,7 @@ bool read_file(int socket, FILE *f) {
     long int file_size = 0;
     char buffer[BUFSIZE];
     long int size = 0;
+    bool retState = true;
 
     bzero(buffer, BUFSIZE);
     int bytesres = (int)recv(socket, buffer, BUFSIZE, 0);
@@ -134,7 +135,8 @@ bool read_file(int socket, FILE *f) {
     }
     Code[++i] = '\0';
     if(!strcmp(Code,NotFound) || !strcmp(Code,BadRequest)){
-       f = stderr;
+        f = stderr;
+        retState = false;
     }else if(strcmp(Code, OK)) {
         fprintf(stderr,"Error: Bad REST response.\n");
         exit(EXIT_FAILURE);
@@ -170,7 +172,7 @@ bool read_file(int socket, FILE *f) {
         return false;
     }
 
-    return true;
+    return retState;
 }
 
 char* makeRest(int operation, char *remotePath) {
@@ -327,7 +329,7 @@ int parse_arguments(int argc,const char *argv[]){
     }
     else{
         fprintf(stderr,"Error: Bad count of arguments.\n");
-        fprintf(stderr,"usage: %s <operation> <http://hostname:port/remotePath> <localPath>\n", argv[0]); //TODO delete
+        //fprintf(stderr,"usage: %s <operation> <http://hostname:port/remotePath> <localPath>\n", argv[0]); //TODO delete
         exit(EXIT_FAILURE);
     }
 }
@@ -419,8 +421,10 @@ int main (int argc, const char * argv[]) {
             writeDataToServer(client_socket,rest,strlen(rest));
 
             bool ok = read_file(client_socket, file);
-            (void) ok;//TODO
             fclose(file);
+            if(!ok){
+                remove(localPath);
+            }
         }
     }
     else if(operation == oper_put){
