@@ -132,7 +132,7 @@ string makeResponse(char* path, long lenght, const char *errCode){
 
     //ACCEPT ECODING
     strcat(head,"Content-Encoding: identity\r\n\r\n");
-    printf("%ld",strlen(head));
+    //printf("%ld",strlen(head));
 
     response = head;
 
@@ -260,7 +260,11 @@ bool checkUser(char* path, char* root_folder){
     }
     userName[i] = '\0';
 
-    sprintf(path2User,"%s%s",root_folder,userName);
+    if(!strcmp(userName,"") || !strcmp(userName,"/")) { //pokud nebyl zadan user
+        return false;
+    }
+
+    sprintf(path2User,"%s%s",root_folder,userName); //cesta k uzivateli
 
     if(!fileOrDirectory(path2User,S_FOLDER)){
         return false;
