@@ -1,4 +1,5 @@
-﻿# IPK - Projekt 1 Dokumentace
+﻿# IPK-Projekt 1 Dokumentace
+
 #### JMÉNO  
 > ftrest- klient  
 > ftrestd- server
