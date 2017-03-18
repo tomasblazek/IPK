@@ -23,14 +23,14 @@ const char OK[] = "HTTP/1.1 200 OK\r\n";
 const char NotFound[] = "HTTP/1.1 404 Not Found\r\n";
 const char BadRequest[] = "HTTP/1.1 400 Bad Request\r\n";
 
-const char ErrNotDir[] = "Not a directory.";
-const char ErrDirNotFound[] = "Directory not found.";
-const char ErrDirNotEmpty[] = "Directory not empty.";
-const char ErrAlreadyExist[] = "Already exists.";
-const char ErrNotFile[] = "Not a file.";
-const char ErrFileNotFound[] = "File not found.";
-const char ErrUserNotFound[] = "User Account Not Found";
-const char ErrUknownError[] = "Unknown error.";
+const char ErrNotDir[] = "Not a directory.\n";
+const char ErrDirNotFound[] = "Directory not found.\n";
+const char ErrDirNotEmpty[] = "Directory not empty.\n";
+const char ErrAlreadyExist[] = "Already exists.\n";
+const char ErrNotFile[] = "Not a file.\n";
+const char ErrFileNotFound[] = "File not found.\n";
+const char ErrUserNotFound[] = "User Account Not Found\n";
+const char ErrUknownError[] = "Unknown error.\n";
 
 /**
  * Decode path in header. Everz %20 to space.
