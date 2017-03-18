@@ -429,17 +429,29 @@ int main (int argc, const char *argv[]) {
         /////////////////PARSE HEAD REST PART END//////////////////////////////
         if (!strcmp(c, "GET")) { //get,lst
             if (!strcmp(fileOrFolder_Flag, "?type=file")) {
-                file = fopen(workingPath, "rb");
-                if (file == NULL) {
+                if(!isExist(workingPath)){
                     string response = makeResponse(NULL,strlen(ErrFileNotFound),NotFound);
                     response += ErrFileNotFound;
                     writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
-                } else {
+                }else {
+                    if(!fileOrDirectory(workingPath,S_FILE)) {
+                        string response = makeResponse(NULL,strlen(ErrNotFile),NotFound);
+                        response += ErrNotFile;
+                        writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                    }else {
+                        file = fopen(workingPath, "rb");
+                        if (file == NULL) {
+                            string response = makeResponse(NULL, strlen(ErrFileNotFound), NotFound);
+                            response += ErrFileNotFound;
+                            writeDataToClient(comm_socket, response.c_str(), strlen(response.c_str()));
+                        } else {
 
-                    if (!send_file(comm_socket, file, workingPath))
-                        fprintf(stderr,"Error: Chyba pri posilani.");
+                            if (!send_file(comm_socket, file, workingPath))
+                                fprintf(stderr, "Error: Chyba pri posilani.");
 
-                    fclose(file);
+                            fclose(file);
+                        }
+                    }
                 }
             } else if (!strcmp(fileOrFolder_Flag, "?type=folder")) {
                 if(!isExist(workingPath)){
