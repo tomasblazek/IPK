@@ -1,3 +1,7 @@
+/*
+ * IPK - Project 1
+ * Author: Tomáš Blažek
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -272,9 +276,8 @@ bool send_file(int socket, FILE *f, char* path){
         }
         data += string(file_content,file_size);
         free(file_content);
-
-        writeDataToClient(socket, data.c_str(), headLen + file_size);
     }
+    writeDataToClient(socket, data.c_str(), headLen + file_size);
 
     return true;
 }

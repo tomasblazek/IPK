@@ -1,12 +1,7 @@
 /*
- * IPK.2015L
- *
- * Demonstration of trivial TCP communication.
- *
- * Ondrej Rysavy (rysavy@fit.vutbr.cz)
- *
+ * IPK - Project 1
+ * Author: Tomáš Blažek
  */
-
 
 #include <stdio.h>
 #include <iostream>
@@ -95,12 +90,12 @@ bool send_file(int socket, FILE *f,char *rest){
         }
 
 
-        data += string(file_content,file_size);
+        data += string(file_content, file_size);
         free(file_content);
         //printf("%s",data.c_str());
-
-        writeDataToServer(socket, data.c_str(), strlen(head) + file_size);
     }
+    writeDataToServer(socket, data.c_str(), strlen(head) + file_size);
+
 
     return true;
 }
@@ -379,7 +374,6 @@ int main (int argc, const char * argv[]) {
     struct hostent *server;
     struct sockaddr_in server_address;
 
-    /* 1. test vstupnich parametru: */
     //Zpracovani argumentu
     int operation = parse_arguments(argc,argv);
     if(argc == 4){
@@ -401,13 +395,13 @@ int main (int argc, const char * argv[]) {
     //printf("HOSTNAME: %s ,PORT: %d, PATH: %s\n", server_hostname, port_number, remotePath);//TODO smazat
 
 
-    /* 2. ziskani adresy serveru pomoci DNS */
+    // Ziskani adresy serveru pomoci DNS
     if ((server = gethostbyname(server_hostname)) == NULL) {
         fprintf(stderr,"Error: no such host as %s\n", server_hostname);
         exit(EXIT_FAILURE);
     }
 
-    /* 3. nalezeni IP adresy serveru a inicializace struktury server_address */
+    // Nalezeni IP adresy serveru a inicializace struktury server_address
     bzero((char *) &server_address, sizeof(server_address));
     server_address.sin_family = AF_INET;
     bcopy((char *)server->h_addr, (char *)&server_address.sin_addr.s_addr, server->h_length);
